@@ -4442,6 +4442,30 @@ window.__ModuleLoader__.load({
 			'  color: var(--dsw-alias-label-primary); cursor: pointer; display: grid; place-items: center;',
 			'  transition: background-color 120ms ease; }',
 			'.jarvis-qr-preview-close:hover { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 30%, transparent); }',
+			// 编辑器语法高亮（VS Code Dark+ / Light+ 配色）
+			'.jarvis-editor-input, .jarvis-editor-highlight { position: absolute; inset: 0; margin: 0;',
+			'  width: 100%; height: 100%; box-sizing: border-box; resize: none; border: none; outline: none;',
+			'  background: transparent; font-family: "Cascadia Code", Consolas, "PingFang SC", "Microsoft YaHei", monospace;',
+			'  font-size: 13px; line-height: 21px; padding: 14px 16px; white-space: pre; overflow: auto;',
+			'  tab-size: 4; overflow-wrap: normal; }',
+			'.jarvis-editor-input { color: transparent; -webkit-text-fill-color: transparent;',
+			'  caret-color: var(--dsw-alias-brand-primary); z-index: 2; }',
+			'.jarvis-editor-input.composing { color: var(--dsw-alias-label-primary); -webkit-text-fill-color: var(--dsw-alias-label-primary); }',
+			'.jarvis-editor-highlight { z-index: 1; pointer-events: none; overflow: hidden; color: var(--dsw-alias-label-primary); }',
+			// 高亮色（深色主题 = VS Code Dark+）
+			'.jarvis-editor-highlight .hl-keyword { color: #569CD6; }',
+			'.jarvis-editor-highlight .hl-string { color: #CE9178; }',
+			'.jarvis-editor-highlight .hl-comment { color: #6A9955; font-style: italic; }',
+			'.jarvis-editor-highlight .hl-number { color: #B5CEA8; }',
+			'.jarvis-editor-highlight .hl-function { color: #DCDCAA; }',
+			'.jarvis-editor-highlight .hl-property { color: #9CDCFE; }',
+			// 亮色主题 = VS Code Light+
+			'body:not([data-ds-dark-theme]) .jarvis-editor-highlight .hl-keyword { color: #0000FF; }',
+			'body:not([data-ds-dark-theme]) .jarvis-editor-highlight .hl-string { color: #A31515; }',
+			'body:not([data-ds-dark-theme]) .jarvis-editor-highlight .hl-comment { color: #008000; }',
+			'body:not([data-ds-dark-theme]) .jarvis-editor-highlight .hl-number { color: #098658; }',
+			'body:not([data-ds-dark-theme]) .jarvis-editor-highlight .hl-function { color: #795E26; }',
+			'body:not([data-ds-dark-theme]) .jarvis-editor-highlight .hl-property { color: #001080; }',
 		].join('\n')
 
 		// ── 文件类型图标：lucide 线性图标（与 orca 使用的 lucide-react 同源，
@@ -5113,6 +5137,151 @@ window.__ModuleLoader__.load({
 			return (n / (1024 * 1024)).toFixed(1) + ' MB'
 		}
 
+		// ── VS Code 风格语法高亮（轻量 tokenizer + overlay 渲染）────────
+		// 参考 VS Code Dark+/Light+ 配色；覆盖多行块注释状态、字符串、
+		// 数字、关键字、函数调用、JSON 键；大文件自动降级为纯文本。
+		const HL_KEYWORDS = {
+			js: 'const let var function return if else for while do switch case break continue new class extends super this typeof instanceof in of try catch finally throw async await yield import export from default null undefined true false delete void static get set interface type enum implements public private protected readonly abstract namespace declare as is keyof infer satisfies using',
+			ts: 'const let var function return if else for while do switch case break continue new class extends super this typeof instanceof in of try catch finally throw async await yield import export from default null undefined true false delete void static get set interface type enum implements public private protected readonly abstract namespace declare as is keyof infer satisfies using',
+			py: 'def return if elif else for while break continue pass import from as class try except finally raise with lambda yield global nonlocal None True False and or not in is assert async await del print',
+			java: 'public private protected class interface enum extends implements import package static final void int long double float boolean char byte short new return if else for while do switch case break continue try catch finally throw throws this super abstract synchronized volatile transient native default null true false',
+			c: 'int char float double void long short unsigned signed const static extern volatile register struct union enum typedef return if else for while do switch case break continue goto sizeof NULL true false',
+			cpp: 'int char float double void long short unsigned signed const static extern volatile register struct union enum typedef return if else for while do switch case break continue goto sizeof NULL true false class namespace template typename public private protected virtual override new delete this auto constexpr inline friend operator using nullptr',
+			cs: 'public private protected internal class struct interface enum namespace using static readonly const virtual override abstract sealed new return if else for foreach while do switch case break continue try catch finally throw this base null true false void int long double float bool char string object var async await get set partial event delegate is as in out ref',
+			go: 'func package import var const type struct interface map chan go defer return if else for range switch case break continue fallthrough select nil true false len cap make new append',
+			rs: 'fn let mut const struct enum trait impl mod use pub crate super self match if else for while loop return break continue move ref as where async await dyn type static unsafe extern true false',
+			php: 'function return if else elseif for foreach while do switch case break continue new class extends implements interface namespace use public private protected static final abstract try catch finally throw true false null echo print isset unset array as global',
+			rb: 'def return if elsif else unless for while until do end case when break next redo retry raise rescue ensure begin class module include extend attr_accessor new nil true false and or not in',
+			swift: 'func var let class struct enum protocol extension import return if else guard for while repeat switch case break continue fallthrough try catch throw throws defer init deinit self super nil true false public private internal fileprivate open static final override in out inout is as where',
+			kt: 'fun val var class object interface enum data sealed abstract open override private public internal protected import package return if else for while do when try catch finally throw null true false this super in is as by lazy lateinit companion init',
+			sh: 'if then else elif fi for while do done case esac function return export local readonly echo exit cd pwd ls mkdir rm cp mv cat grep sed awk sudo true false set shift source alias unset',
+			sql: 'SELECT FROM WHERE INSERT INTO VALUES UPDATE SET DELETE CREATE TABLE INDEX VIEW DROP ALTER JOIN LEFT RIGHT INNER OUTER ON GROUP BY ORDER HAVING LIMIT OFFSET AS AND OR NOT NULL PRIMARY KEY FOREIGN REFERENCES DISTINCT UNION ALL CASE WHEN THEN ELSE END EXISTS IN BETWEEN LIKE COUNT SUM AVG MIN MAX ASC DESC',
+			lua: 'function return if then elseif else for while do end local nil true false and or not repeat until break goto',
+			dart: 'void var final const class extends implements mixin import export library return if else for while do switch case break continue try catch finally throw new null true false this super async await is as in',
+		}
+		const HL_KEYWORD_SET = {}
+		for (const lang of Object.keys(HL_KEYWORDS)) {
+			HL_KEYWORD_SET[lang] = new Set(HL_KEYWORDS[lang].split(' '))
+		}
+		const HL_LANG_BY_EXT = {
+			js: 'js', jsx: 'js', mjs: 'js', cjs: 'js', ts: 'ts', tsx: 'ts', mts: 'ts', cts: 'ts',
+			py: 'py', pyw: 'py', java: 'java', c: 'c', h: 'c', cc: 'cpp', cpp: 'cpp', hpp: 'cpp',
+			cxx: 'cpp', cs: 'cs', go: 'go', rs: 'rs', php: 'php', rb: 'rb', swift: 'swift',
+			kt: 'kt', kts: 'kt', sh: 'sh', bash: 'sh', zsh: 'sh', fish: 'sh', ps1: 'sh',
+			sql: 'sql', sqlite: 'sql', html: 'html', htm: 'html', xml: 'xml', svg: 'xml',
+			css: 'css', scss: 'css', less: 'css', json: 'json', jsonc: 'json', yaml: 'yaml',
+			yml: 'yaml', lua: 'lua', dart: 'dart', md: 'md',
+		}
+		/** 按文件名取高亮语言（无映射返回 null = 不高亮）。 */
+		function getHighlightLang(name) {
+			const lower = String(name || '').toLowerCase()
+			const dot = lower.lastIndexOf('.')
+			if (dot <= 0 || dot === lower.length - 1) {
+				if (lower === 'dockerfile' || lower === 'makefile') return 'sh'
+				return null
+			}
+			return HL_LANG_BY_EXT[lower.slice(dot + 1)] || null
+		}
+		function escapeHtml(s) {
+			return String(s)
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+		}
+		const hlSpan = (cls, esc) => '<span class="' + cls + '">' + esc + '</span>'
+		/** 文本 → 高亮 HTML（纯函数；行注释/块注释/字符串/数字/关键字/函数/JSON 键）。 */
+		function highlightToHtml(text, lang) {
+			const lines = String(text || '').split('\n')
+			if (lang !== 'json' && !HL_KEYWORD_SET[lang]) lang = null
+			const kw = lang ? HL_KEYWORD_SET[lang] : null
+			// 行注释前缀（按语言）；html/css 用块注释
+			const lineComment =
+				lang === 'py' || lang === 'sh' || lang === 'rb' || lang === 'yaml' || lang === 'lua'
+					? '#'
+					: lang === 'sql'
+						? '--'
+						: lang === 'html' || lang === 'css'
+							? null
+							: '//'
+			const out = []
+			let inBlock = false
+			for (const line of lines) {
+				let i = 0
+				const seg = []
+				while (i < line.length) {
+					const rest = line.slice(i)
+					if (inBlock) {
+						const end = rest.indexOf('*/')
+						if (end === -1) {
+							seg.push(hlSpan('hl-comment', escapeHtml(rest)))
+							i = line.length
+							break
+						}
+						seg.push(hlSpan('hl-comment', escapeHtml(rest.slice(0, end + 2))))
+						i += end + 2
+						inBlock = false
+						continue
+					}
+					if (lineComment && rest.startsWith(lineComment)) {
+						seg.push(hlSpan('hl-comment', escapeHtml(rest)))
+						i = line.length
+						break
+					}
+					if (rest.startsWith('/*')) {
+						const end = rest.indexOf('*/', 2)
+						if (end === -1) {
+							seg.push(hlSpan('hl-comment', escapeHtml(rest)))
+							i = line.length
+							inBlock = true
+							break
+						}
+						seg.push(hlSpan('hl-comment', escapeHtml(rest.slice(0, end + 2))))
+						i += end + 2
+						continue
+					}
+					// 字符串（含 JSON 键探测）
+					const str = /^("(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?|`(?:[^`\\\n]|\\.)*`?)/.exec(rest)
+					if (str) {
+						const raw = str[0]
+						if (lang === 'json' && raw[0] === '"' && /^\s*:/.test(line.slice(i + raw.length))) {
+							seg.push(hlSpan('hl-property', escapeHtml(raw)))
+						} else {
+							seg.push(hlSpan('hl-string', escapeHtml(raw)))
+						}
+						i += raw.length
+						continue
+					}
+					const num = /^\d[\d_]*(\.\d+)?([eE][+-]?\d+)?/.exec(rest)
+					if (num) {
+						seg.push(hlSpan('hl-number', escapeHtml(num[0])))
+						i += num[0].length
+						continue
+					}
+					const ident = /^[A-Za-z_$][\w$]*/.exec(rest)
+					if (ident) {
+						const word = ident[0]
+						if (kw && kw.has(word)) {
+							seg.push(hlSpan('hl-keyword', escapeHtml(word)))
+						} else if (/^\s*\(/.test(line.slice(i + word.length))) {
+							seg.push(hlSpan('hl-function', escapeHtml(word)))
+						} else {
+							seg.push(escapeHtml(word))
+						}
+						i += word.length
+						continue
+					}
+					seg.push(escapeHtml(rest[0]))
+					i += 1
+				}
+				out.push(seg.join(''))
+			}
+			return out.join('\n')
+		}
+		/** 高亮渲染上限：超过则不高亮（保持纯文本，避免卡顿）。 */
+		const HL_MAX_CHARS = 300000
+		const HL_MAX_LINES = 6000
+
 		/** 相对路径（git 用 '/' 分隔）→ 绝对路径（按根目录分隔符拼接）。 */
 		function joinAbsPath(root, rel) {
 			const sep = String(root || '').indexOf('\\') >= 0 ? '\\' : '/'
@@ -5366,6 +5535,15 @@ window.__ModuleLoader__.load({
 			const [size, setSize] = React.useState(0)
 			const [saving, setSaving] = React.useState(false)
 			const [note, setNote] = React.useState('')
+			const [composing, setComposing] = React.useState(false) // IME 组合期恢复文字显示
+			const hlRef = React.useRef(null)
+			const hlLang = getHighlightLang(fileName)
+			const highlightHtml = React.useMemo(() => {
+				if (!hlLang || text.length > HL_MAX_CHARS || text.split('\n').length > HL_MAX_LINES) {
+					return null
+				}
+				return highlightToHtml(text, hlLang)
+			}, [text, hlLang])
 			React.useEffect(() => {
 				let alive = true
 				setStatus('loading')
@@ -5501,26 +5679,34 @@ window.__ModuleLoader__.load({
 									{ style: { ...ui.hint, padding: '14px' } },
 									'二进制文件（' + formatFileSize(size) + '），请用「外部打开」。',
 								)
-							: React.createElement('textarea', {
-									value: text,
-									onChange: (e) => setText(e.target.value),
-									spellCheck: false,
-									style: {
-										flex: 1,
-										minHeight: 0,
-										width: '100%',
-										boxSizing: 'border-box',
-										resize: 'none',
-										border: 'none',
-										outline: 'none',
-										background: 'transparent',
-										color: 'var(--dsw-alias-label-primary)',
-										fontFamily: CODE_FONT,
-										fontSize: '13px',
-										lineHeight: '21px',
-										padding: '14px 16px',
-									},
-								}),
+							: React.createElement(
+									'div',
+									{ style: { position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' } },
+									// VS Code 风格语法高亮：透明 textarea + 高亮 pre 背景层
+									highlightHtml
+										? React.createElement('pre', {
+												ref: hlRef,
+												'aria-hidden': true,
+												className: 'jarvis-editor-highlight',
+												dangerouslySetInnerHTML: { __html: highlightHtml },
+											})
+										: null,
+									React.createElement('textarea', {
+										value: text,
+										onChange: (e) => setText(e.target.value),
+										spellCheck: false,
+										wrap: 'off',
+										className: 'jarvis-editor-input' + (composing ? ' composing' : ''),
+										onScroll: (e) => {
+											if (hlRef.current) {
+												hlRef.current.scrollTop = e.target.scrollTop
+												hlRef.current.scrollLeft = e.target.scrollLeft
+											}
+										},
+										onCompositionStart: () => setComposing(true),
+										onCompositionEnd: () => setComposing(false),
+									}),
+								),
 			)
 		}
 
@@ -6547,6 +6733,8 @@ window.__ModuleLoader__.load({
 			stopComposerWatcher,
 			showQrPreview,
 			closeQrPreview,
+			getHighlightLang,
+			highlightToHtml,
 			flattenTreeRows,
 			buildNameFilterRows,
 			relativePathOf,

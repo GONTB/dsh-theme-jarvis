@@ -678,6 +678,25 @@ globalThis.document = savedDocument
 		'关闭后预览遮罩移除',
 	)
 
+	// 语法高亮（VS Code 风格）：关键字 / 字符串 / 注释 / 函数 / JSON 键 / 转义
+	const { getHighlightLang, highlightToHtml } = exports.__internals
+	assert.equal(getHighlightLang('index.js'), 'js', 'js 扩展名映射')
+	assert.equal(getHighlightLang('App.tsx'), 'ts', 'tsx 映射 ts')
+	assert.equal(getHighlightLang('hello.txt'), null, '未知扩展名不高亮')
+	const jsHtml = highlightToHtml('const x = "hi"; // 注释\nfunction add() {}', 'js')
+	assert.ok(jsHtml.includes('hl-keyword'), '关键字高亮')
+	assert.ok(jsHtml.includes('hl-string'), '字符串高亮')
+	assert.ok(jsHtml.includes('hl-comment'), '行注释高亮')
+	assert.ok(jsHtml.includes('hl-function'), '函数调用高亮（后跟括号）')
+	const jsonHtml = highlightToHtml('{ "name": 42 }', 'json')
+	assert.ok(jsonHtml.includes('hl-property'), 'JSON 键高亮')
+	assert.ok(jsonHtml.includes('hl-number'), '数字高亮')
+	const blockHtml = highlightToHtml('/* 开始\n中间\n结束 */', 'js')
+	assert.ok(blockHtml.includes('hl-comment'), '多行块注释跨行高亮')
+	const escHtml = highlightToHtml('<div class="a">', 'html')
+	assert.ok(!escHtml.includes('<div') || escHtml.includes('&lt;div'), 'HTML 必须转义避免注入')
+	assert.ok(escHtml.includes('hl-string'), 'html 字符串属性高亮')
+
 	// 树样式注入：行 / 箭头 / 选中态 / ● 标记 / 过滤条类必须进 FX 样式（且无 backdrop-filter）
 	assert.ok(style.textContent.includes('.jarvis-tree-row'), '文件树行样式必须注入')
 	assert.ok(style.textContent.includes('.jarvis-tree-dot'), '打开文件 ● 标记样式必须注入')
