@@ -663,6 +663,21 @@ globalThis.document = savedDocument
 	assert.equal(cleanTerminalText('__JARVIS_READY__\r\nPS>'), '\nPS>', 'READY 握手标记剥离')
 	assert.equal(cleanTerminalText('\r\n'), '\n', 'CRLF 归一')
 
+	// 收款码大图预览：挂到 body，关闭后移除
+	const { showQrPreview, closeQrPreview } = exports.__internals
+	showQrPreview()
+	const qrOverlay = documentStub.body.children.find((el) => el.className === 'jarvis-qr-preview')
+	assert.ok(qrOverlay, '预览遮罩必须挂到 body')
+	assert.ok(
+		qrOverlay.children.some((el) => el.tagName === 'img' && String(el.src || '').includes('donate/qrcode')),
+		'预览内含收款码大图',
+	)
+	closeQrPreview()
+	assert.ok(
+		!documentStub.body.children.some((el) => el.className === 'jarvis-qr-preview'),
+		'关闭后预览遮罩移除',
+	)
+
 	// 树样式注入：行 / 箭头 / 选中态 / ● 标记 / 过滤条类必须进 FX 样式（且无 backdrop-filter）
 	assert.ok(style.textContent.includes('.jarvis-tree-row'), '文件树行样式必须注入')
 	assert.ok(style.textContent.includes('.jarvis-tree-dot'), '打开文件 ● 标记样式必须注入')

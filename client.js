@@ -3711,6 +3711,7 @@ window.__ModuleLoader__.load({
 						{
 							src: DONATE_QR_URL,
 							alt: '微信收款码',
+							title: '点击放大查看',
 							style: {
 								width: 176,
 								height: 176,
@@ -3718,7 +3719,18 @@ window.__ModuleLoader__.load({
 								border: '1px solid var(--dsw-alias-border-l2)',
 								background: '#ffffff',
 								objectFit: 'cover',
+								cursor: 'zoom-in',
+								transition: 'transform 120ms ease, box-shadow 120ms ease',
 							},
+							onMouseEnter: (e) => {
+								e.currentTarget.style.transform = 'scale(1.03)'
+								e.currentTarget.style.boxShadow = '0 0 14px rgba(59, 220, 244, 0.35)'
+							},
+							onMouseLeave: (e) => {
+								e.currentTarget.style.transform = ''
+								e.currentTarget.style.boxShadow = ''
+							},
+							onClick: showQrPreview,
 						},
 					),
 					React.createElement(
@@ -4418,6 +4430,18 @@ window.__ModuleLoader__.load({
 			'.jarvis-terminal-input { flex: 1; min-width: 0; background: transparent; border: none; outline: none;',
 			'  color: #e6f5fb; font-family: inherit; font-size: 12px; }',
 			'.jarvis-terminal-input:disabled { opacity: 0.5; }',
+			// 收款码大图预览（lightbox）
+			'.jarvis-qr-preview { position: fixed; inset: 0; z-index: 2147483650;',
+			'  background: rgba(2, 8, 15, 0.78); display: flex; align-items: center; justify-content: center;',
+			'  cursor: zoom-out; }',
+			'.jarvis-qr-preview img { max-width: min(420px, 84vw); max-height: 84vh;',
+			'  border-radius: 12px; background: #ffffff; padding: 12px; cursor: default;',
+			'  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55); }',
+			'.jarvis-qr-preview-close { position: absolute; top: 14px; right: 18px; width: 30px; height: 30px;',
+			'  border: none; border-radius: 50%; background: color-mix(in srgb, var(--dsw-alias-label-primary) 14%, transparent);',
+			'  color: var(--dsw-alias-label-primary); cursor: pointer; display: grid; place-items: center;',
+			'  transition: background-color 120ms ease; }',
+			'.jarvis-qr-preview-close:hover { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 30%, transparent); }',
 		].join('\n')
 
 		// ── 文件类型图标：lucide 线性图标（与 orca 使用的 lucide-react 同源，
@@ -5779,6 +5803,51 @@ window.__ModuleLoader__.load({
 			}
 		}
 
+		/** 收款码大图预览（lightbox）：挂到 body（fixed 相对视口，不受
+		 *  设置模态框 transform/包含块影响），点击遮罩 / ✕ / Esc 关闭。 */
+		let qrPreviewEl = null
+		let qrPreviewKeyHandler = null
+		function showQrPreview() {
+			if (typeof document === 'undefined' || qrPreviewEl) return
+			const overlay = document.createElement('div')
+			overlay.className = 'jarvis-qr-preview'
+			const img = document.createElement('img')
+			img.src = DONATE_QR_URL
+			img.alt = '微信收款码'
+			img.addEventListener('click', (e) => e.stopPropagation())
+			overlay.appendChild(img)
+			const close = document.createElement('button')
+			close.type = 'button'
+			close.className = 'jarvis-qr-preview-close'
+			close.title = '关闭'
+			close.innerHTML =
+				'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+				(ICON_SVG.x || '') +
+				'</svg>'
+			close.addEventListener('click', (e) => {
+				e.stopPropagation()
+				closeQrPreview()
+			})
+			overlay.appendChild(close)
+			overlay.addEventListener('click', closeQrPreview)
+			document.body.appendChild(overlay)
+			qrPreviewEl = overlay
+			qrPreviewKeyHandler = (e) => {
+				if (e.key === 'Escape') closeQrPreview()
+			}
+			document.addEventListener('keydown', qrPreviewKeyHandler)
+		}
+		function closeQrPreview() {
+			if (qrPreviewEl) {
+				qrPreviewEl.remove()
+				qrPreviewEl = null
+			}
+			if (qrPreviewKeyHandler && typeof document !== 'undefined') {
+				document.removeEventListener('keydown', qrPreviewKeyHandler)
+				qrPreviewKeyHandler = null
+			}
+		}
+
 		/** 会话头部工具区按钮：开关右侧栏文件目录（orca 无此座，为 DSH 增设）。 */
 		function JarvisFilesToggle() {
 			const [, bumpDetails] = React.useReducer((x) => x + 1, 0)
@@ -6413,6 +6482,7 @@ window.__ModuleLoader__.load({
 						wakeEngine.dispose()
 						stopViewAddWatcher()
 						stopComposerWatcher()
+						closeQrPreview()
 						if (disposeDark) disposeDark()
 						if (disposeLight) disposeLight()
 					}
@@ -6475,6 +6545,8 @@ window.__ModuleLoader__.load({
 			syncComposerVisibility,
 			startComposerWatcher,
 			stopComposerWatcher,
+			showQrPreview,
+			closeQrPreview,
 			flattenTreeRows,
 			buildNameFilterRows,
 			relativePathOf,
