@@ -2,6 +2,10 @@
 
 > **"At your service, sir."** — J.A.R.V.I.S. / 钢铁侠 HUD 主题，为 DeepSeek Harness Web GUI 打造。
 
+[![Version](https://img.shields.io/badge/version-0.9.0-3BDCF4?style=flat-square&labelColor=0a1424)](package.json)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square&labelColor=0a1424)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Web%20GUI%20(Chromium)-F5B33C?style=flat-square&labelColor=0a1424)](https://github.com/GONTB/dsh-theme-jarvis)
+
 纯浏览器端 Cordis 主题插件：方舟反应堆青 × 斯塔克琥珀的双配色体系、夜航 / 昼光两套完整 token 主题、CRT 扫描线、辉光、开机动画、**右下角复刻《奥创纪元》双 AI 光效的全息粒子宠物（金色收敛球贾维斯 / 蓝色混沌网奥创）**、**可自定义的背景壁纸（内置系统默认壁纸 + 本机图片，启用后界面表面变半透明毛玻璃）**，以及**语音唤醒系统**——说「贾维斯」唤醒，继续说指令即可自动转写进输入框草稿（浏览器语音服务不可达时自动降级 host 转发的云端 STT）。全部通过官方 `ctx.theme.register` / `ctx.theme.setTheme` / `ctx.theme.overrideTokens` 与 `slots` 接缝实现——不修改任何 vendor 文件，仅随包携带一张系统默认壁纸。
 
 ## ✨ 特性
@@ -25,11 +29,13 @@
 ## 📦 安装
 
 ```bash
-# 本仓库目录下（本地路径安装）
-dsh plugin --profile web add file:.
+# 从 GitHub 安装（推荐）
+dsh plugin --profile web add github:GONTB/dsh-theme-jarvis
 
-# 或从 GitHub 安装
-dsh plugin --profile web add github:<你的用户名>/DeepSeekHarness-Jarvis
+# 或克隆后本地路径安装
+git clone https://github.com/GONTB/dsh-theme-jarvis.git
+cd dsh-theme-jarvis
+dsh plugin --profile web add file:.
 ```
 
 安装完成后**重启 `dsh web`** 生效。
@@ -166,6 +172,17 @@ dsh plugin --profile web remove dsh-theme-cyberpunk2077
 
 本插件不覆盖 `--dsw-static-*` 内部标尺 token，只覆盖官方语义别名层，因此与
 非主题类插件（如 dshmarket）完全兼容。
+
+## 📁 仓库结构
+
+```
+index.js           host 半：STT 转发 / 壁纸 / 文件浏览编辑 / git 状态与操作 / 终端会话路由
+client.js          浏览器端核心（主题 token、特效、宠物、语音唤醒、壁纸、文件侧边栏、终端）
+cordis.patch.yml   bundle 补丁层（主题行 + stt 配置）
+assets/            内置系统默认壁纸
+local-stt/         本地离线 FunASR 服务脚本（配合 vocotype-cli 使用）
+test/              冒烟 / host 路由 / 唤醒引擎 / 真实 React 渲染回归测试
+```
 
 ## 🧩 技术实现
 
