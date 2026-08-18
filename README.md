@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square&labelColor=0a1424)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Web%20GUI%20(Chromium)-F5B33C?style=flat-square&labelColor=0a1424)](https://github.com/GONTB/dsh-theme-jarvis)
 
-纯浏览器端 Cordis 主题插件：方舟反应堆青 × 斯塔克琥珀的双配色体系、夜航 / 昼光两套完整 token 主题、CRT 扫描线、辉光、开机动画、**右下角复刻《奥创纪元》双 AI 光效的全息粒子宠物（金色收敛球贾维斯 / 蓝色混沌网奥创）**、**可自定义的背景壁纸（内置系统默认壁纸 + 本机图片，启用后界面表面变半透明毛玻璃）**，以及**语音唤醒系统**——说「贾维斯」唤醒，继续说指令即可自动转写进输入框草稿（浏览器语音服务不可达时自动降级 host 转发的云端 STT）。全部通过官方 `ctx.theme.register` / `ctx.theme.setTheme` / `ctx.theme.overrideTokens` 与 `slots` 接缝实现——不修改任何 vendor 文件，仅随包携带一张系统默认壁纸。
+纯浏览器端 Cordis 主题插件：方舟反应堆青 × 斯塔克琥珀的双配色体系、夜航 / 昼光两套完整 token 主题、CRT 扫描线、辉光、开机动画、**右下角复刻《奥创纪元》双 AI 光效的全息粒子宠物（金色收敛球贾维斯 / 蓝色混沌网奥创）**、**可自定义的背景壁纸（内置系统默认壁纸 + 本机图片，启用后界面表面变半透明毛玻璃）**，以及**语音唤醒系统**——说「贾维斯」唤醒，继续说指令即可自动转写进输入框草稿（浏览器语音服务不可达时自动降级 host 转发的云端 STT）。全部通过官方 `ctx.theme.register` / `ctx.theme.setTheme` / `ctx.theme.overrideTokens` 与 `slots` 接缝实现——不修改任何 vendor 文件，仅随包携带一张系统默认壁纸与一张支持作者收款码。
 
 ## ✨ 特性
 
@@ -18,8 +18,10 @@
 - 🗂️ **orca 风格文件侧边栏 + 多标签文件编辑器**：右侧栏（details 座位替换）内置**双视图工作区侧边栏**（参考 [stablyai/orca](https://github.com/stablyai/orca) 右侧栏 FileExplorer / SourceControl）：
   - **「目录」视图**：文件树（目录按需懒加载 + 展开/收起箭头 + 深度缩进 + **lucide 线性文件类型图标（SVG，非 emoji）** + 悬停/选中态 + 行内加载/出错重试 + h-8 工具栏（折叠全部 / 刷新 / **显示隐藏文件**开关）+ **Find files 名称过滤条**（防抖全树拉取 + 合成祖先目录，跳过噪声目录）+ **Git 状态标签与行数**（行右侧 M/A/D/R/U/C 带色标签 + `+N -M` 增删行数，目录向上聚合））
   - **「仓库」视图**（Git 变更面板）：**变更文件列表**（状态 + 增删行数，双击打开）+ **汇总行**（`N 个文件变更 · +X −Y` / 工作区干净）+ **Git 操作导航栏**（顶部 拉取 / 提交 / 推送 + 提交信息输入，操作结果反馈，保存后自动刷新）
-  - **顶栏加号菜单**：文件导航栏（tab 栏）右侧 **`+`** 按钮 → 弹出菜单：**终端 PowerShell** / **新文件** / **Git 终端**——选终端后中间区域变为黑底交互式终端页（host spawn 进程 + 增量轮询，导航栏显示 `PowerShell` / `Git Bash` 名称 tab）；选新文件则在会话工作区创建 `untitled.txt`（同名自动加序号）并打开为可编辑标签
+  - **顶栏加号菜单**：文件导航栏（tab 栏）右侧 **`+`** 按钮 → 弹出菜单：**终端 PowerShell** / **新文件** / **Git 终端**——选终端后中间区域变为黑底交互式终端页（host spawn 进程 + 增量轮询，导航栏显示 `PowerShell` / `Git Bash` 名称 tab；**中文输入输出不乱码**：非 ASCII 命令以 base64 包装执行、输出按 UTF-8/GBK 双解码探测，并剥离 ANSI 转义）；选新文件则在会话工作区创建 `untitled.txt`（同名自动加序号）并打开为可编辑标签
+  - **非对话视图隐藏输入框**：激活文件 / 终端标签时，官方的聊天输入框自动隐藏，内容区占满整个高度；切回「对话」恢复
   - 标题栏文件夹图标按钮随时开关；**双击文件**即打开为顶部标签页（与「对话 / 轨迹」同排，每个文件一个标签），中间区域只显示该文件内容——可直接编辑并**保存回磁盘**（host 转发 `/files/list` `/files/read` `/files/write`，回环限定），也可用系统编辑器外部打开；未保存的改动在标签与树中均显示 `●`
+- 💖 **支持作者**：设置 → **JARVIS 控制台**底部展示**微信收款码**（随插件打包，host 静态路由提供）——喜欢这个主题？请作者喝杯咖啡 ☕
 - 🖥️ **JARVIS 开机动画**：扫描线 → `J.A.R.V.I.S.` 标题 → 三条系统日志，每次进入页面播放一次（可关）
 - 📺 **HUD 特效**：CRT 扫描线、暗角、主框架四角定位括号、会话行青色左沿、输入框聚焦辉光、方舟反应堆脉动主按钮、**输入框打字音效（按键拟音 + 回车发送音，Web Audio 合成，参考 cyberpunk2077）**——每个特效独立开关
 - ⚙️ **设置面板**：设置 → **JARVIS 控制台**，显示模式 + 特效开关 + 识别后端 + 语音唤醒 / 唤醒词 + 恢复默认，即时生效、无需刷新
@@ -225,7 +227,10 @@ index.js           host 半：/api/dsh-theme-jarvis/transcribe 云端 STT 转发
                      新建空文件（同名自动加序号）
                    + /api/dsh-theme-jarvis/terminal/{open,read,write,close}
                      简易终端：host spawn PowerShell / Git Bash，增量缓冲轮询，
-                     15 分钟空闲自动回收
+                     base64 包装非 ASCII 输入、UTF-8/GBK 双解码探测输出（中文不乱码），
+                     READY 握手 + 15 分钟空闲自动回收
+                   + /api/dsh-theme-jarvis/donate/qrcode
+                     支持作者微信收款码（assets/支持作者.jpg）
 cordis.patch.yml   bundle 补丁层：主题行 + stt 配置
 test/              冒烟 + 唤醒引擎仿真 + host 路由测试 + 真实 React 渲染回归
 ```

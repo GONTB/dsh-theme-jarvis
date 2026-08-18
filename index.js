@@ -50,6 +50,9 @@ export const name = 'jarvis-theme'
 /** 打包在包内的系统默认壁纸 */
 const WALLPAPER_PATH = fileURLToPath(new URL('./assets/默认壁纸.png', import.meta.url))
 
+/** 打包在包内的支持作者收款码（JARVIS 控制台底部展示） */
+const DONATE_QR_PATH = fileURLToPath(new URL('./assets/支持作者.jpg', import.meta.url))
+
 /** 文件浏览路由的护栏 */
 const FILES_MAX_ENTRIES = 500 // 单级目录最多返回条目
 const FILES_MAX_READ_BYTES = 2 * 1024 * 1024 // 读取文件上限（超大文件拒绝）
@@ -89,17 +92,47 @@ function openTerminalSession(kind, cwd) {
 		env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
 		stdio: ['pipe', 'pipe', 'pipe'],
 	})
-	const session = { proc, buffer: '', lastRead: Date.now(), kind }
+	// Windows PowerShell 对管道 stdin/stdout 的编码不稳定（GBK 代码页 /
+	// chcp 65001 生效时序），中文会乱码。处理：
+	// 1) 第一条命令（纯 ASCII）强制 UTF-8 输出编码 + 代码页 65001，并输出
+	//    __JARVIS_READY__ 握手标记（chcp 生效前写入 stdin 的中文会被错读吞掉，
+	//    客户端必须等 READY 才允许输入）。
+	// 2) 所有含非 ASCII 的输入由 host 用 base64 包装成纯 ASCII 命令执行，
+	//    stdin 永远只写 ASCII —— 彻底绕开 5.1 管道输入编码问题。
+	// 3) READY 后 host 自动发一条 base64 探测命令，用 UTF-8 / GBK 双解码
+	//    确定会话输出编码（哪个解出探测串用哪个），中文输出不再乱码。
+	if (kind !== 'git') {
+		proc.stdin.write(
+			"chcp 65001 | Out-Null; [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Write-Output '__JARVIS_READY__';\n",
+		)
+	}
+	const session = { proc, buffer: Buffer.alloc(0), encoding: kind === 'git' ? 'utf8' : null, probeSent: false, lastRead: Date.now(), kind }
 	proc.stdout.on('data', (d) => {
-		session.buffer += String(d)
-		if (session.buffer.length > TERMINAL_MAX_BUFFER) session.buffer = session.buffer.slice(-TERMINAL_MAX_BUFFER)
+		const b = Buffer.isBuffer(d) ? d : Buffer.from(String(d))
+		session.buffer = Buffer.concat([session.buffer, b])
+		if (session.buffer.length > TERMINAL_MAX_BUFFER) session.buffer = session.buffer.subarray(-TERMINAL_MAX_BUFFER)
 	})
 	proc.stderr.on('data', (d) => {
-		session.buffer += String(d)
-		if (session.buffer.length > TERMINAL_MAX_BUFFER) session.buffer = session.buffer.slice(-TERMINAL_MAX_BUFFER)
+		const b = Buffer.isBuffer(d) ? d : Buffer.from(String(d))
+		session.buffer = Buffer.concat([session.buffer, b])
+		if (session.buffer.length > TERMINAL_MAX_BUFFER) session.buffer = session.buffer.subarray(-TERMINAL_MAX_BUFFER)
 	})
 	terminalSessions.set(id, session)
 	return id
+}
+
+/** 终端输出编码探测串：哪个解码能解出它，会话就用那个编码。 */
+const TERMINAL_PROBE_TEXT = '编码探测中文'
+const terminalGbkDecoder = new TextDecoder('gbk')
+/** 按会话编码解码输出缓冲（首次调用时探测确定编码），并剥离探测串。 */
+function decodeTerminalBuffer(session, buf) {
+	if (session.encoding === null) {
+		const utf8 = buf.toString('utf8')
+		const gbk = terminalGbkDecoder.decode(buf)
+		session.encoding = utf8.includes(TERMINAL_PROBE_TEXT) ? 'utf8' : gbk.includes(TERMINAL_PROBE_TEXT) ? 'gbk' : 'utf8'
+	}
+	let text = session.encoding === 'gbk' ? terminalGbkDecoder.decode(buf) : buf.toString('utf8')
+	return text.split(TERMINAL_PROBE_TEXT).join('')
 }
 
 function reapIdleTerminals() {
@@ -788,9 +821,20 @@ export function apply(ctx, rawConfig) {
 							sendJson(res, 404, { ok: false, error: 'session not found' })
 							return
 						}
-						const output = session.buffer
-						session.buffer = ''
+						const buf = session.buffer
+						session.buffer = Buffer.alloc(0)
 						session.lastRead = Date.now()
+						// READY 后自动发 base64 探测命令，确定输出编码（只发一次）
+						if (session.kind !== 'git' && !session.probeSent && buf.toString('utf8').includes('__JARVIS_READY__')) {
+							session.probeSent = true
+							const probeB64 = Buffer.from("Write-Output '编码探测中文'", 'utf8').toString('base64')
+							session.proc.stdin.write(
+								"& ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" +
+									probeB64 +
+									"'))))\n",
+							)
+						}
+						const output = decodeTerminalBuffer(session, buf)
 						sendJson(res, 200, {
 							ok: true,
 							output,
@@ -827,7 +871,18 @@ export function apply(ctx, rawConfig) {
 							return
 						}
 						try {
-							session.proc.stdin.write(input)
+							// 含非 ASCII 的输入用 base64 包装成纯 ASCII 命令执行，
+							// 绕开 PowerShell 5.1 管道 stdin 的编码问题
+							if (session.kind !== 'git' && /[^\x00-\x7f]/.test(input)) {
+								const b64 = Buffer.from(input, 'utf8').toString('base64')
+								session.proc.stdin.write(
+									"& ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" +
+										b64 +
+										"'))))\n",
+								)
+							} else {
+								session.proc.stdin.write(input)
+							}
 							sendJson(res, 200, { ok: true })
 						} catch (err) {
 							sendJson(res, 500, {
@@ -1075,6 +1130,38 @@ export function apply(ctx, rawConfig) {
 					},
 				})
 
+				// ── 支持作者收款码（JARVIS 控制台底部）──────────────────
+				let donateBuf = null
+				try {
+					donateBuf = readFileSync(DONATE_QR_PATH)
+				} catch (err) {
+					console.warn('[dsh-theme-jarvis] 收款码缺失:', DONATE_QR_PATH, err.message)
+				}
+				const disposeDonate = httpCtx.webServer.register({
+					kind: 'exact',
+					path: '/api/dsh-theme-jarvis/donate/qrcode',
+					handler: (req, res) => {
+						if (req.method !== 'GET') {
+							sendJson(res, 405, { ok: false, error: 'method not allowed' })
+							return
+						}
+						if (!guard(req)) {
+							sendJson(res, 403, { ok: false, error: 'loopback only' })
+							return
+						}
+						if (!donateBuf) {
+							sendJson(res, 404, { ok: false, error: 'qrcode not found' })
+							return
+						}
+						res.writeHead(200, {
+							'content-type': 'image/jpeg',
+							'content-length': donateBuf.length,
+							'cache-control': 'public, max-age=86400',
+						})
+						res.end(donateBuf)
+					},
+				})
+
 				// ── 本地识别服务健康检查代理（浏览器直连会被 CORS 挡，经 host 转发）──
 				const disposeLocalHealth = httpCtx.webServer.register({
 					kind: 'exact',
@@ -1140,6 +1227,7 @@ export function apply(ctx, rawConfig) {
 					disposeGitStatus()
 					disposeGitOp()
 					disposeWallpaper()
+					disposeDonate()
 					// 关闭所有遗留终端会话
 					for (const s of terminalSessions.values()) {
 						try {

@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
 		const FX_STYLE_ID = 'dsh-theme-jarvis-fx'
 		const WALLPAPER_STORE_KEY = 'dsh-theme-jarvis:wallpapers'
 		const WALLPAPER_DEFAULT_URL = '/api/dsh-theme-jarvis/wallpaper/default'
+		const DONATE_QR_URL = '/api/dsh-theme-jarvis/donate/qrcode'
 		// 压缩参数（参考 dsh-dream-skin）：canvas 降采样 + JPEG，目标 ≤2MB，
 		// 让用户壁纸稳稳落在 localStorage 配额内、渲染也更快。
 		const WALLPAPER_MAX_BYTES = 10 * 1024 * 1024 // 原始文件上限 10MB（导入时压缩）
@@ -3666,6 +3667,66 @@ window.__ModuleLoader__.load({
 						'恢复默认',
 					),
 				),
+
+				// ── 支持作者（底部收款码）──────────────────────────────
+				React.createElement(
+					'div',
+					{
+						style: {
+							display: 'flex',
+							flexDirection: 'column',
+							alignItems: 'center',
+							gap: '10px',
+							padding: '16px 4px 4px',
+						},
+					},
+					React.createElement(
+						'div',
+						{
+							style: {
+								display: 'flex',
+								alignItems: 'center',
+								gap: '8px',
+								fontSize: '13px',
+								fontWeight: 600,
+								lineHeight: '20px',
+								color: 'var(--dsw-alias-label-primary)',
+								letterSpacing: '.06em',
+							},
+						},
+						React.createElement('div', {
+							style: {
+								width: 6,
+								height: 6,
+								borderRadius: '50%',
+								background: 'var(--dsw-alias-brand-primary)',
+								boxShadow: '0 0 6px rgba(59, 220, 244, 0.7)',
+								flexShrink: 0,
+							},
+						}),
+						'支持作者',
+					),
+					React.createElement(
+						'img',
+						{
+							src: DONATE_QR_URL,
+							alt: '微信收款码',
+							style: {
+								width: 176,
+								height: 176,
+								borderRadius: 10,
+								border: '1px solid var(--dsw-alias-border-l2)',
+								background: '#ffffff',
+								objectFit: 'cover',
+							},
+						},
+					),
+					React.createElement(
+						'div',
+						{ style: { ...ui.hint, textAlign: 'center' } },
+						'喜欢这个 J.A.R.V.I.S. 主题？扫一扫请作者喝杯咖啡 ☕',
+					),
+				),
 			)
 		}
 
@@ -5440,6 +5501,18 @@ window.__ModuleLoader__.load({
 		}
 
 		/** 简易终端（黑底输出 + 输入行；host spawn 进程 + 300ms 增量轮询）。 */
+		const TERMINAL_READY_MARK = '__JARVIS_READY__'
+		/** 剥离 ANSI 转义序列与 READY 握手标记，避免显示乱码控制字符。 */
+		function cleanTerminalText(s) {
+			return String(s || '')
+				.replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, '')
+				.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+				.replace(/\x1b[()][0-9A-Z]/g, '')
+				.replace(/\x1b[=>]/g, '')
+				.replace(/\r\n/g, '\n')
+				.replace(/\r/g, '\n')
+				.split(TERMINAL_READY_MARK).join('')
+		}
 		function JarvisTerminal(props) {
 			const { tabId, record, onClose } = props
 			const [text, setText] = React.useState('')
@@ -5449,6 +5522,7 @@ window.__ModuleLoader__.load({
 			const textRef = React.useRef('')
 			const outputRef = React.useRef(null)
 			const actualKind = record.actualKind || record.kind
+			const needsReady = actualKind !== 'git' // PowerShell 需等 chcp 生效的 READY 标记
 
 			// 打开 host 会话
 			React.useEffect(() => {
@@ -5461,7 +5535,11 @@ window.__ModuleLoader__.load({
 						if (!alive) return
 						record.sessionId = data.sessionId
 						record.actualKind = data.kind
-						setState('ready')
+						if (data.kind !== 'git') {
+							setState('opening') // 等 READY 标记再允许输入
+						} else {
+							setState('ready')
+						}
 					})
 					.catch((err) => {
 						if (!alive) return
@@ -5486,6 +5564,9 @@ window.__ModuleLoader__.load({
 							if (data.output) {
 								textRef.current += data.output
 								setText(textRef.current)
+								if (needsReady && textRef.current.includes(TERMINAL_READY_MARK)) {
+									setState('ready')
+								}
 							}
 							if (data.exited) {
 								clearInterval(poll)
@@ -5499,7 +5580,7 @@ window.__ModuleLoader__.load({
 					alive = false
 					clearInterval(poll)
 				}
-			}, [record.sessionId])
+			}, [record.sessionId, needsReady])
 
 			// 输出区滚动到底
 			React.useEffect(() => {
@@ -5518,6 +5599,8 @@ window.__ModuleLoader__.load({
 				}).catch(() => {})
 				setInput('')
 			}
+
+			const display = cleanTerminalText(state === 'opening' ? (needsReady ? '正在启动终端…' : '正在启动终端…') : text)
 
 			return React.createElement(
 				'div',
@@ -5539,11 +5622,7 @@ window.__ModuleLoader__.load({
 				React.createElement(
 					'pre',
 					{ ref: outputRef, className: 'jarvis-terminal-output' },
-					state === 'opening'
-						? '正在启动终端…'
-						: state === 'error'
-							? note
-							: text || (state === 'exited' ? note : ''),
+					state === 'error' ? note : display || (state === 'exited' ? note : ''),
 				),
 				React.createElement(
 					'div',
@@ -5662,6 +5741,41 @@ window.__ModuleLoader__.load({
 			if (viewAddButton) {
 				viewAddButton.remove()
 				viewAddButton = null
+			}
+		}
+
+		// ── 非对话视图隐藏官方输入框 ─────────────────────────────────
+		// 顶栏激活的 tab 不是「对话」时（文件 / 终端标签），中间的聊天
+		// 输入框（[data-composer-seat]）隐藏，让文件/终端占满可用高度。
+		let composerObserver = null
+		function syncComposerVisibility() {
+			if (typeof document === 'undefined') return
+			const seat = document.querySelector('[data-composer-seat]')
+			if (!seat) return
+			const active = document.querySelector('[role="tab"][aria-selected="true"]')
+			const label = active ? (active.textContent || '').trim() : ''
+			const isChat = label === '对话' || label === 'chat'
+			seat.style.display = isChat ? '' : 'none'
+		}
+		function startComposerWatcher() {
+			if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return
+			syncComposerVisibility()
+			composerObserver = new MutationObserver(() => syncComposerVisibility())
+			composerObserver.observe(document.body, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				attributeFilter: ['aria-selected'],
+			})
+		}
+		function stopComposerWatcher() {
+			if (composerObserver) {
+				composerObserver.disconnect()
+				composerObserver = null
+			}
+			if (typeof document !== 'undefined') {
+				const seat = document.querySelector('[data-composer-seat]')
+				if (seat) seat.style.display = ''
 			}
 		}
 
@@ -6099,6 +6213,8 @@ window.__ModuleLoader__.load({
 					if (settings.boot) playBoot()
 					// 顶栏加号按钮 + 新建菜单（终端 / 新文件）
 					startViewAddWatcher()
+					// 非对话视图（文件 / 终端标签）隐藏官方输入框
+					startComposerWatcher()
 
 					// 2a. 输入框打字音效（仅 TEXTAREA，捕获阶段全局监听）
 					const onTypingKeydownHandler = (e) => onTypingKeydown(e)
@@ -6296,6 +6412,7 @@ window.__ModuleLoader__.load({
 						teardownWallpaper()
 						wakeEngine.dispose()
 						stopViewAddWatcher()
+						stopComposerWatcher()
 						if (disposeDark) disposeDark()
 						if (disposeLight) disposeLight()
 					}
@@ -6352,8 +6469,12 @@ window.__ModuleLoader__.load({
 			createNewFileTab,
 			activateViewTabByLabel,
 			JarvisTerminal,
+			cleanTerminalText,
 			startViewAddWatcher,
 			stopViewAddWatcher,
+			syncComposerVisibility,
+			startComposerWatcher,
+			stopComposerWatcher,
 			flattenTreeRows,
 			buildNameFilterRows,
 			relativePathOf,

@@ -653,6 +653,16 @@ globalThis.document = savedDocument
 	assert.equal(diffMap.get('bad.js'), undefined, '非法行数过滤')
 	assert.equal(diffMap.get('none.js'), undefined, '缺失条目过滤')
 
+	// 终端输出清洗：剥离 ANSI 转义 + READY 握手标记 + \r 归一，中文保留
+	const { cleanTerminalText } = exports.__internals
+	assert.equal(
+		cleanTerminalText('\x1b[32mOK\x1b[0m\r\n\u4e2d\u6587'),
+		'OK\n\u4e2d\u6587',
+		'ANSI 颜色转义剥离且中文保留',
+	)
+	assert.equal(cleanTerminalText('__JARVIS_READY__\r\nPS>'), '\nPS>', 'READY 握手标记剥离')
+	assert.equal(cleanTerminalText('\r\n'), '\n', 'CRLF 归一')
+
 	// 树样式注入：行 / 箭头 / 选中态 / ● 标记 / 过滤条类必须进 FX 样式（且无 backdrop-filter）
 	assert.ok(style.textContent.includes('.jarvis-tree-row'), '文件树行样式必须注入')
 	assert.ok(style.textContent.includes('.jarvis-tree-dot'), '打开文件 ● 标记样式必须注入')

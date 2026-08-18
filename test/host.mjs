@@ -60,8 +60,8 @@ function makeInstance(rawConfig) {
 	)
 	assert.equal(
 		routes.length,
-		14,
-		'每个实例注册 transcribe + stt-config + local-stt/health + files/list + files/read + files/write + files/create + terminal/open + terminal/read + terminal/write + terminal/close + git/status + git/op + wallpaper 十四条路由',
+		15,
+		'每个实例注册 transcribe + stt-config + local-stt/health + files/list + files/read + files/write + files/create + terminal/open + terminal/read + terminal/write + terminal/close + git/status + git/op + wallpaper + donate/qrcode 十五条路由',
 	)
 	const byPath = {}
 	for (const route of routes) byPath[route.path] = route.handler
@@ -564,11 +564,22 @@ const jsonBody = (obj) => JSON.stringify(obj)
 	assert.equal(term.ok, true)
 	assert.ok(term.sessionId, '必须返回会话 id')
 	const sid = term.sessionId
-	// 初始 read 可能拿到欢迎横幅；写入后轮询应出现我们的回显
+	// 先等 UTF-8 握手标记（chcp 65001 生效）——生效前写入的中文会被 GBK 错读吞掉
+	let boot = ''
+	for (let i = 0; i < 60; i += 1) {
+		await sleep(100)
+		res = makeRes()
+		await byPath[readRoute](makeReq({ body: jsonBody({ sessionId: sid }) }), res)
+		assert.equal(res.status, 200)
+		boot += JSON.parse(res.body).output
+		if (boot.includes('__JARVIS_READY__')) break
+	}
+	assert.ok(boot.includes('__JARVIS_READY__'), '终端必须输出 UTF-8 就绪标记（' + boot.slice(-80) + '）')
+	// READY 后写入命令，轮询应出现回显
 	res = makeRes()
 	await byPath[writeRoute](makeReq({ body: jsonBody({ sessionId: sid, input: 'echo jarvis-terminal-test\n' }) }), res)
 	assert.equal(res.status, 200)
-	let found = ''
+	let found = boot.replace(/__JARVIS_READY__/g, '')
 	for (let i = 0; i < 40; i += 1) {
 		await sleep(120)
 		res = makeRes()
@@ -579,6 +590,27 @@ const jsonBody = (obj) => JSON.stringify(obj)
 		if (found.includes('jarvis-terminal-test')) break
 	}
 	assert.ok(found.includes('jarvis-terminal-test'), '终端必须回显命令输出（' + found.slice(-80) + '）')
+
+	// 中文编码：UTF-8 设置必须让中文回显不乱码（GBK 会被解成乱码）
+	res = makeRes()
+	await byPath[writeRoute](
+		makeReq({ body: jsonBody({ sessionId: sid, input: 'echo 贾维斯中文终端测试\n' }) }),
+		res,
+	)
+	assert.equal(res.status, 200)
+	let cn = ''
+	for (let i = 0; i < 40; i += 1) {
+		await sleep(120)
+		res = makeRes()
+		await byPath[readRoute](makeReq({ body: jsonBody({ sessionId: sid }) }), res)
+		assert.equal(res.status, 200)
+		cn += JSON.parse(res.body).output
+		if (cn.includes('贾维斯中文终端测试')) break
+	}
+	assert.ok(
+		cn.includes('贾维斯中文终端测试'),
+		'终端中文必须无乱码（UTF-8 编码设置生效）: ' + cn.slice(-80),
+	)
 	res = makeRes()
 	await byPath[closeRoute](makeReq({ body: jsonBody({ sessionId: sid }) }), res)
 	assert.equal(res.status, 200)
@@ -603,5 +635,27 @@ const jsonBody = (obj) => JSON.stringify(obj)
 	assert.equal(res.status, 403)
 }
 
+// ── 12. 支持作者收款码（donate/qrcode 静态服务）──────────────────────
+{
+	const { byPath } = makeInstance({})
+	const qrFile = fileURLToPath(new URL('../assets/支持作者.jpg', import.meta.url))
+	const expected = readFileSync(qrFile)
+	const route = '/api/dsh-theme-jarvis/donate/qrcode'
+
+	let res = makeRes()
+	await byPath[route](makeReq({ method: 'GET' }), res)
+	assert.equal(res.status, 200)
+	assert.equal(res.headers['content-type'], 'image/jpeg')
+	assert.equal(res.headers['content-length'], expected.length)
+	assert.ok(Buffer.isBuffer(res.body))
+	assert.deepEqual(res.body, expected, '收款码字节必须与 assets/支持作者.jpg 一致')
+	res = makeRes()
+	await byPath[route](makeReq({ method: 'GET', remote: '192.168.1.9' }), res)
+	assert.equal(res.status, 403)
+	res = makeRes()
+	await byPath[route](makeReq({ method: 'POST', body: 'x' }), res)
+	assert.equal(res.status, 405)
+}
+
 rmSync(tempHome, { recursive: true, force: true })
-console.log('✔ host: transcribe + stt-config + files + terminal + git + wallpaper — all passed')
+console.log('✔ host: transcribe + stt-config + files + terminal + git + wallpaper + donate — all passed')
